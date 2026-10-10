@@ -1,0 +1,217 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>Vale — Universal 3D RPG Engine</title>
+<style>
+:root{--bg:#090e13;--fg:#eef2f6;--hp:#d9534f;--stm:#5cb85c;--gold:#f2c14e;--panel:rgba(9,14,20,.92);box-sizing:border-box}
+html,body{height:100%;margin:0;background:var(--bg);color:var(--fg);font:14px/1.4 system-ui,-apple-system,"Segoe UI",sans-serif;overflow:hidden;user-select:none}
+canvas{position:fixed;inset:0;width:100%;height:100%;display:block;touch-action:none;background:#090e13}
+
+/* HUD Overlay */
+#hud{position:fixed;left:16px;top:calc(env(safe-area-inset-top,0px) + 16px);width:min(280px,50vw);pointer-events:none;z-index:20;display:flex;flex-direction:column;gap:6px}
+.bar-wrap{height:8px;border-radius:4px;background:rgba(0,0,0,.6);overflow:hidden;border:1px solid rgba(255,255,255,.1)}
+#hp-bar{height:100%;width:100%;background:var(--hp);transition:width .15s}
+#stm-bar{height:100%;width:100%;background:var(--stm);transition:width .1s}
+#st-text{font-weight:700;text-shadow:0 1px 4px #000;font-size:13px}
+#quest-tracker{color:var(--gold);font-size:12px;font-weight:600;text-shadow:0 1px 3px #000}
+
+/* Hotbar & Mobile Controls */
+#hotbar{position:fixed;bottom:calc(env(safe-area-inset-bottom,0px) + 20px);left:50%;transform:translateX(-50%);display:flex;gap:10px;pointer-events:none;z-index:20}
+.slot{width:48px;height:48px;background:var(--panel);border:2px solid var(--gold);border-radius:8px;display:flex;flex-direction:column;align-items:center;justify-content:center;font-weight:bold;font-size:12px;box-shadow:0 4px 12px rgba(0,0,0,.5)}
+.slot span{font-size:10px;opacity:.7}
+
+#atk-btn{display:none;position:fixed;right:24px;bottom:calc(env(safe-area-inset-bottom,0px) + 24px);width:80px;height:80px;border-radius:50%;border:2px solid var(--gold);background:var(--panel);color:var(--gold);font-size:32px;z-index:30;touch-action:none}
+#atk-btn:active{background:rgba(242,193,78,.4)}
+@media (pointer:coarse){#atk-btn{display:block}#hotbar{bottom:calc(env(safe-area-inset-bottom,0px) + 110px)}}
+
+#msg{position:fixed;left:0;right:0;top:20%;text-align:center;font-size:22px;font-weight:700;opacity:0;transition:opacity .4s;pointer-events:none;text-shadow:0 2px 8px #000;z-index:30}
+
+/* Inventory Modal */
+#inv-panel{display:none;position:fixed;inset:10% 8%;background:rgba(9,14,20,.96);border:2px solid var(--gold);border-radius:12px;padding:24px;z-index:100;backdrop-filter:blur(10px);flex-direction:column;overflow:hidden}
+.modal-header{display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid rgba(255,255,255,.1);padding-bottom:12px;margin-bottom:16px}
+.tab-group{display:flex;gap:10px}
+.tab-btn{background:rgba(255,255,255,.05);color:var(--fg);border:1px solid rgba(255,255,255,.1);padding:6px 16px;border-radius:6px;cursor:pointer;font-weight:600}
+.tab-btn.active{background:var(--gold);color:var(--bg);border-color:var(--gold)}
+.tab-content{display:none;flex:1;overflow:hidden;grid-template-columns: 1.2fr 1fr;gap:20px}
+.tab-content.active{display:grid}
+#inv-left{display:flex;flex-direction:column;height:100%;overflow:hidden}
+#inv-list{flex:1;overflow-y:auto;margin-bottom:12px;padding-right:4px}
+.inv-slot{background:rgba(255,255,255,.05);padding:10px 14px;margin:6px 0;border-radius:6px;display:flex;justify-content:space-between;align-items:center;cursor:pointer;border:1px solid transparent;transition:all .15s}
+.inv-slot:hover,.inv-slot.selected{border-color:var(--gold);background:rgba(242,193,78,.15)}
+#inspect-box{background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.1);border-radius:8px;padding:16px;display:flex;flex-direction:column;justify-content:space-between;height:100%;box-sizing:border-box}
+.char-layout{display:grid;grid-template-columns: 1fr 1.2fr;gap:20px;height:100%;overflow-y:auto}
+.paperdoll-slots{display:flex;flex-direction:column;gap:10px}
+.paperdoll-slot{background:rgba(255,255,255,.05);border:1px dashed rgba(242,193,78,.4);border-radius:8px;padding:10px;text-align:center}
+.paperdoll-slot span{font-size:11px;opacity:.6;display:block;text-transform:uppercase}
+.paperdoll-slot strong{color:var(--gold);font-size:13px}
+.stats-panel{background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.1);border-radius:8px;padding:16px;display:flex;flex-direction:column;gap:10px}
+.stat-row{display:flex;justify-content:space-between;align-items:center;background:rgba(255,255,255,.04);padding:6px 12px;border-radius:6px}
+.stat-btn{background:var(--gold);color:var(--bg);border:none;width:22px;height:22px;border-radius:4px;font-weight:bold;cursor:pointer}
+.inv-actions{display:flex;gap:10px}
+.inv-btn{background:var(--panel);color:var(--gold);border:1px solid var(--gold);padding:8px 16px;border-radius:4px;cursor:pointer;font-weight:600}
+</style></head><body>
+<canvas id="c"></canvas>
+
+<div id="hud">
+    <div class="bar-wrap"><div id="hp-bar"></div></div>
+    <div class="bar-wrap"><div id="stm-bar"></div></div>
+    <div id="st-text"></div>
+    <div id="quest-tracker">Quest: Purge 5 Fallacies</div>
+</div>
+
+<div id="hotbar">
+    <div class="slot"><span>ATK</span>Space</div>
+    <div class="slot"><span>CLEAVE</span>Q</div>
+    <div class="slot"><span>DODGE</span>Shift</div>
+    <div class="slot"><span>MENU</span>I</div>
+</div>
+
+<button id="atk-btn" aria-label="Attack">⚔</button>
+
+<div id="msg"></div>
+
+<!-- Inventory & Character Modal -->
+<div id="inv-panel">
+    <div class="modal-header">
+        <div class="tab-group">
+            <button class="tab-btn active" id="btn-tab-inv" onclick="switchTab('inv')">Inventory</button>
+            <button class="tab-btn" id="btn-tab-char" onclick="switchTab('char')">Character Sheet & Paperdoll</button>
+        </div>
+        <div style="font-size:13px;opacity:.6;">[I] or [Esc] to Close</div>
+    </div>
+
+    <div class="tab-content active" id="tab-pane-inv">
+        <div id="inv-left">
+            <div id="equipped-display" style="margin-bottom:12px;font-size:14px;color:var(--gold);font-weight:600;">Active Weapon: None</div>
+            <div id="inv-list"></div>
+            <div class="inv-actions" style="border-top:1px solid rgba(255,255,255,.1);padding-top:12px">
+                <button class="inv-btn" id="btn-equip">Equip/Use [E]</button>
+                <button class="inv-btn" id="btn-drop">Drop [D]</button>
+            </div>
+        </div>
+        <div id="inspect-box">
+            <div>
+                <div id="insp-name" style="color:var(--gold);font-size:18px;font-weight:700;margin-bottom:6px">Select an Item</div>
+                <div id="insp-type" style="font-size:12px;text-transform:uppercase;letter-spacing:1px;opacity:.6;margin-bottom:12px">---</div>
+                <div id="insp-stats" style="font-size:13px;color:var(--gold);background:rgba(242,193,78,.1);padding:8px 12px;border-radius:6px;margin-bottom:16px">Stats: None</div>
+                <div id="insp-desc" style="font-size:14px;line-height:1.5;opacity:.85;margin-bottom:16px;flex:1;overflow-y:auto">Examine your items here.</div>
+            </div>
+            <div style="font-size:12px;opacity:.5;text-align:right;">[WASD/Arrows to navigate]</div>
+        </div>
+    </div>
+
+    <div class="tab-content" id="tab-pane-char">
+        <div class="char-layout">
+            <div class="paperdoll-slots">
+                <div style="color:var(--gold);font-weight:bold;margin-bottom:4px;">Equipment Paperdoll</div>
+                <div class="paperdoll-slot"><span>Head Slot</span><strong id="paper-head">Empty</strong></div>
+                <div class="paperdoll-slot"><span>Chest Slot</span><strong id="paper-chest">Empty</strong></div>
+                <div class="paperdoll-slot"><span>Main Hand (Weapon)</span><strong id="paper-weapon">None</strong></div>
+                <div class="paperdoll-slot"><span>Accessory Slot</span><strong id="paper-acc">Empty</strong></div>
+            </div>
+            <div class="stats-panel">
+                <div style="color:var(--gold);font-weight:bold;display:flex;justify-content:space-between;">
+                    <span>Sage Candidate</span>
+                    <span id="char-level-txt">Level 1</span>
+                </div>
+                <div style="font-size:13px;opacity:.8;display:flex;justify-content:space-between;">
+                    <span id="char-xp-txt">XP: 0 / 250</span>
+                    <span id="char-pts-txt" style="color:var(--gold);">Available Points: 3</span>
+                </div>
+                <div style="border-bottom:1px solid rgba(255,255,255,.1);margin:4px 0;"></div>
+                <div class="stat-row"><span>Strength (Attack Dmg)</span><div style="display:flex;align-items:center;gap:10px;"><span id="stat-str" style="font-weight:bold;color:var(--gold);">10</span><button class="stat-btn" onclick="upgradeStat('strength')">+</button></div></div>
+                <div class="stat-row"><span>Defense (Armor Mitigation)</span><div style="display:flex;align-items:center;gap:10px;"><span id="stat-def" style="font-weight:bold;color:var(--gold);">10</span><button class="stat-btn" onclick="upgradeStat('defense')">+</button></div></div>
+                <div class="stat-row"><span>Agility (Speed / Dodge)</span><div style="display:flex;align-items:center;gap:10px;"><span id="stat-agi" style="font-weight:bold;color:var(--gold);">10</span><button class="stat-btn" onclick="upgradeStat('agility')">+</button></div></div>
+                <div class="stat-row"><span>Intellect (Consumable Power)</span><div style="display:flex;align-items:center;gap:10px;"><span id="stat-int" style="font-weight:bold;color:var(--gold);">10</span><button class="stat-btn" onclick="upgradeStat('intellect')">+</button></div></div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+(async()=>{
+const $=i=>document.getElementById(i),cv=$('c');
+const ctx = cv.getContext('2d');
+
+/* ---------- Audio Synthesizer ---------- */
+let audioCtx=null;
+function initAudio(){if(!audioCtx)audioCtx=new(window.AudioContext||window.webkitAudioContext)()}
+
+/* ---------- Math & Noise ---------- */
+const terrainHeight=(x,z)=>{
+    const d=Math.hypot(x,z);
+    return (Math.sin(x*0.08)*Math.cos(z*0.08)*2.5 + Math.sin(x*0.03)*Math.cos(z*0.03)*5.0) * Math.min(1, d / 12);
+};
+
+/* ---------- ECS ---------- */
+class World{constructor(){this.n=1;this.c={}}spawn(o){const e=this.n++;for(const k in o)(this.c[k]??={})[e]=o[k];return e}kill(e){for(const k in this.c)delete this.c[k][e]}each(k,f){const s=this.c[k];if(s)for(const e in s)f(+e,s[e])}get(e,k){return this.c[k]?.[e]}}
+const W=new World();
+
+const playerStats={level:1, xp:0, xpNext:250, attributePoints:3, strength:10, defense:10, agility:10, intellect:10, stm:100, stmMax:100};
+let cy=Math.PI,cp=.5,gold=0,wave=0,kills=0,time=0,want=0;
+const stick={x:0,y:0},keys={},RED='#d9534f',GOLD='#f2c14e',BLUE='#337ab7';
+const box=(x,y,z,sx,sy,sz,c,o={})=>W.spawn({tf:{x,y,z,sx,sy,sz},mesh:{c},...o});
+
+const P=box(0,0,0,.8,1.8,.8,BLUE,{player:{cd:0},hp:{v:100,max:100}});
+const pt=W.get(P,'tf'),ph=W.get(P,'hp');
+
+function spawn(){const a=Math.random()*6.283,d=12+Math.random()*6,x=pt.x+Math.cos(a)*d,z=pt.z+Math.sin(a)*d;box(x,0,z,1.2,1.4,1.2,RED,{hp:{v:35,max:35},enemy:{cd:.6}})}
+
+/* ---------- Main Loop ---------- */
+function tick(dt){
+    time+=dt;
+    let n=0;W.each('enemy',()=>n++);if(!n){wave++;for(let i=0;i<Math.min(1+wave,6);i++)spawn();}
+    const moveSpeed=6*(1+(playerStats.agility-10)*0.02);
+    const ix=(keys.KeyD||0)-(keys.KeyA||0)+stick.x,iy=(keys.KeyW||0)-(keys.KeyS||0)-stick.y,l=Math.hypot(ix,iy),k=l>1?1/l:1;
+    const fx=-Math.sin(cy),fz=-Math.cos(cy),rx=Math.cos(cy),rz=-Math.sin(cy);
+    const dx=(fx*iy+rx*ix)*k,dz=(fz*iy+rz*ix)*k;
+    pt.x+=dx*moveSpeed*dt; pt.z+=dz*moveSpeed*dt;
+
+    W.each('enemy',(e,en)=>{
+        const t=W.get(e,'tf'),ex=pt.x-t.x,ez=pt.z-t.z,d=Math.hypot(ex,ez)||1;
+        if(d<16&&d>1.4){const s=(2.6+wave*.15)*dt;t.x+=ex/d*s;t.z+=ez/d*s}
+    });
+}
+
+function render(){
+    cv.width = window.innerWidth; cv.height = window.innerHeight;
+    const cx = cv.width / 2, cy_screen = cv.height / 2;
+    
+    // Background Grid Render
+    ctx.fillStyle = '#090e13'; ctx.fillRect(0,0,cv.width,cv.height);
+    ctx.strokeStyle = 'rgba(255,255,255,0.05)'; ctx.lineWidth = 1;
+    
+    const scale = 20;
+    for(let x = -500; x <= 500; x += 40) {
+        ctx.beginPath(); ctx.moveTo(cx + (x - pt.x * scale), 0); ctx.lineTo(cx + (x - pt.x * scale), cv.height); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(0, cy_screen + (x - pt.z * scale)); ctx.lineTo(cv.width, cy_screen + (x - pt.z * scale)); ctx.stroke();
+    }
+
+    // Render Entities
+    W.each('mesh',(e,m)=>{
+        const t=W.get(e,'tf');
+        const sx = cx + (t.x - pt.x) * scale;
+        const sy = cy_screen + (t.z - pt.z) * scale;
+        
+        ctx.fillStyle = m.c;
+        ctx.beginPath();
+        ctx.arc(sx, sy, Math.max(8, t.sx * scale), 0, Math.PI * 2);
+        ctx.fill();
+        ctx.strokeStyle = '#000'; ctx.lineWidth = 2; ctx.stroke();
+    });
+}
+
+addEventListener('keydown',e=>{keys[e.code]=1;initAudio();});
+addEventListener('keyup',e=>keys[e.code]=0);
+
+let last=performance.now();
+function frame(now){
+    const dt=Math.min((now-last)/1000,.1);last=now;
+    tick(dt); render();
+    $('hp-bar').style.width=Math.max(0,ph.v/ph.max*100)+'%';
+    $('st-text').textContent='Gold '+gold+' · Wave '+wave+' · Kills '+kills;
+    requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+})();
+</script></body></html>
